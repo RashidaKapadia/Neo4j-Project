@@ -10,6 +10,7 @@ import org.neo4j.driver.AuthTokens;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.GraphDatabase;
 import org.neo4j.driver.Result;
+import org.neo4j.driver.Record;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Transaction;
 
@@ -23,7 +24,7 @@ public class RelationEndPoints implements HttpHandler {
     /* Establish driver of the db */
     public RelationEndPoints(){
         uriDb = "bolt://localhost:7687";
-        driver = GraphDatabase.driver(uriDb, AuthTokens.basic("neo4j","12312"));
+        driver = GraphDatabase.driver(uriDb, AuthTokens.basic("neo4j","jimmy"));
     }
 
     @Override
@@ -36,7 +37,7 @@ public class RelationEndPoints implements HttpHandler {
             }
         } else if (r.getRequestMethod().equals("GET")){
             try {
-                //hasRelationship();
+                hasRelationship(r);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -95,7 +96,7 @@ public class RelationEndPoints implements HttpHandler {
         try (Session session = driver.session()){
             session.writeTransaction(tx -> tx.run("MATCH (actor:Actor) where actor.actorId = $actorId"
                             + " MATCH (movie:Movie) where movie.movieId = $movieId"
-                            + " MERGE (actor)-[r:ACTED_IN]->(movie) RETURN type(r) as type",
+                            + " MERGE (actor)-[r:ACTED_IN]-(movie) RETURN type(r) as type",
                     parameters("actorId", actorId, "movieId", movieId)));
             session.close();
             return(1);
@@ -103,6 +104,53 @@ public class RelationEndPoints implements HttpHandler {
             e.printStackTrace();
             return(0);
         }
+    }
+
+    public void hasRelationship(HttpExchange r) throws IOException, JSONException{
+        String response = "";
+        String body = Utils.convert(r.getRequestBody());
+        JSONObject deserialized = new JSONObject(body);
+
+        try (Session session = driver.session())
+        {
+            String actorId = deserialized.getString("actorId");
+            String movieId = deserialized.getString("movieId");
+        	try (Transaction tx = session.beginTransaction()) {
+        		Result node_result = tx.run("MATCH (actor: Actor)-[r:ACTED_IN]->(movie: Movie) where movie.movieId=$movieId AND actor.actorId=$actorId"
+                 + " RETURN movie.movieId as movieId, actor.actorId as actorId",
+                parameters("actorId", actorId, "movieId", movieId));
+
+                // If the actor is not found
+                if (node_result.hasNext() == false) {
+                 r.sendResponseHeaders(404, -1);
+                    return;
+                } 
+                else{
+                    boolean hasRelationship = false;
+                    Record rec = node_result.next();
+                    if (rec.get("movieId").asString() != "")
+                        hasRelationship = true;
+                    // create the json response
+                    response = "[";
+                    String info = "{ \"actorId\" : \""  + actorId + "\", \"movieId\" : \"" + movieId + "\", \"hasRelationship\" : " + hasRelationship;
+                    
+                    response = response.concat(info);
+                    // replace the last comma and add the closing bracket
+                    response = response.replaceAll(",$", "");
+                    response = response.concat("]}]");
+                }
+                // send back appropriate responses
+                r.sendResponseHeaders(200, response.length());
+                OutputStream os = r.getResponseBody();
+                os.write(response.getBytes());
+                os.close();
+            } 
+            catch(Exception e){
+                e.printStackTrace();
+                r.sendResponseHeaders(400, response.length());
+            }
+        }
+        
     }
 }
 

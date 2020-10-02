@@ -3,6 +3,9 @@ package ca.utoronto.utm.mcs;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.List;
+
+import javax.lang.model.util.ElementScanner6;
+
 import java.util.ArrayList;
 
 import org.json.*;
@@ -26,7 +29,7 @@ public class ActorEndPoints implements HttpHandler {
     /* Establish driver of the db */
     public ActorEndPoints(){
         uriDb = "bolt://localhost:7687";
-        driver = GraphDatabase.driver(uriDb, AuthTokens.basic("neo4j","12312"));
+        driver = GraphDatabase.driver(uriDb, AuthTokens.basic("neo4j","jimmy"));
     }
 
     @Override
@@ -112,20 +115,16 @@ public class ActorEndPoints implements HttpHandler {
         String response = "";
         String body = Utils.convert(r.getRequestBody());
         JSONObject deserialized = new JSONObject(body);
-        // check if actorId is provided
-        // if (!body.containsKey("actorId")) {
-        //     r.sendResponseHeaders(400, -1);
-        //     return;
-        // }
 
         try (Session session = driver.session())
         {
         	try (Transaction tx = session.beginTransaction()) {
-        		Result node_result = tx.run("MATCH (actor: Actor)-[r:ACTED_IN]->(movie) where actor.actorId = $actorId RETURN actor.name as name, actor.actorId as actorId,"
-                             + " r",
+        		Result node_result = tx.run("MATCH (actor: Actor) where actor.actorId = $actorId"
+                 + " OPTIONAL MATCH (actor: Actor)-[r:ACTED_IN]->(movie: Movie)"
+                 + " RETURN actor.name as name, actor.actorId as actorId, movie.movieId as movieId",
                 parameters("actorId", deserialized.getString("actorId")));
+                System.out.println("got node_result\n");
 
-                System.out.println("TEST!!!! " + node_result + "\n");
                 // If the actor is not found
                 if (node_result.hasNext() == false) {
                  r.sendResponseHeaders(404, -1);
@@ -133,22 +132,31 @@ public class ActorEndPoints implements HttpHandler {
                 } 
                 else{
                     List<Actor> actors = new ArrayList<Actor>();
+                    List<Movie> movies = new ArrayList<Movie>();
                     while (node_result.hasNext()) {
                         Record rec = node_result.next();
                         //Set up our response in a JSON format
                         Actor actor = new Actor(rec.get("name").asString(), rec.get("actorId").asString());
+                        Movie movie = new Movie(null, rec.get("movieId").asString());
+                        // System.out.println(rec.get("movieId").ArrayList);
                         actors.add(actor);
+                        movies.add(movie);
                     }
+                    Actor a = actors.get(0);
                     // create the json response
                     response = "[";
-                    for(Actor a : actors){
-                    // create the actor info and concat it to the response
-                    String actor_info = "{ \"name\" : " + a.name + ", \"actorId\" : " + a.actorId + " + "," },";
-                    response = response.concat(actor_info);
+                    String actor_info = "{ \"name\" : \""  + a.name + "\", \"actorId\" : \"" + a.actorId + "\", \"movies\" : ["; 
+                    String movie_info = "";
+                    for(Movie m : movies){
+                        if (m.movieId != "null"){
+                            movie_info =  "\"" + m.movieId +  "\",";
+                        }
+                        actor_info = actor_info.concat(movie_info);
                     }
+                    response = response.concat(actor_info);
                     // replace the last comma and add the closing bracket
                     response = response.replaceAll(",$", "");
-                    response = response.concat("]");
+                    response = response.concat("]}]");
                 }
                 // send back appropriate responses
                 r.sendResponseHeaders(200, response.length());
@@ -162,15 +170,7 @@ public class ActorEndPoints implements HttpHandler {
             }
         }
         
-
-
-
-        
     }
-
-
-
-
 }
 
 /*

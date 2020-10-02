@@ -13,7 +13,7 @@ public class Connect {
 	
 	public static String uriDb = "bolt://localhost:7687";
     public static String uriUser ="http://localhost:8080";
-    public static Driver driver = GraphDatabase.driver(uriDb, AuthTokens.basic("neo4j","12312")); //TODO: change password back to 1234
+    public static Driver driver = GraphDatabase.driver(uriDb, AuthTokens.basic("neo4j","jimmy")); //TODO: change password back to 1234
 
     // public getDriver(){
 
