@@ -2,6 +2,8 @@ package ca.utoronto.utm.mcs;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.List;
+import java.util.ArrayList;
 
 import org.json.*;
 
@@ -11,6 +13,7 @@ import org.neo4j.driver.Driver;
 import org.neo4j.driver.GraphDatabase;
 import org.neo4j.driver.Result;
 import org.neo4j.driver.Session;
+import org.neo4j.driver.Record;
 import org.neo4j.driver.Transaction;
 
 import com.sun.net.httpserver.HttpExchange;
@@ -27,22 +30,22 @@ public class ActorEndPoints implements HttpHandler {
     }
 
     @Override
-    public void handle(HttpExchange exchange) throws IOException {
-        if (exchange.getRequestMethod().equals("PUT")){
+    public void handle(HttpExchange r) throws IOException {
+        if (r.getRequestMethod().equals("PUT")){
             try{
-                addActor(exchange);
+                addActor(r);
             }catch (Exception e) {
                 e.printStackTrace();
             }
-        } else if (exchange.getRequestMethod().equals("GET")){
+        } else if (r.getRequestMethod().equals("GET")){
             try {
-                //getActor();
+                getActor(r);
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
         else {
-            exchange.sendResponseHeaders(500, -1);
+            r.sendResponseHeaders(500, -1);
         }
     }
 
@@ -91,6 +94,7 @@ public class ActorEndPoints implements HttpHandler {
     private int create(String name, String actorId){
         Result result;
         // check if actorId already exist
+        // TO: Fix the Cypher command
         try (Session session = driver.session()){
             session.writeTransaction(tx -> tx.run("MERGE (actor:Actor {actorId: $actorId})" 
                 + " ON MATCH SET actor.name = $name" 
@@ -103,6 +107,68 @@ public class ActorEndPoints implements HttpHandler {
             return(0);
         }
     }
+    
+    public void getActor(HttpExchange r) throws IOException, JSONException{
+        String response = "";
+        String body = Utils.convert(r.getRequestBody());
+        JSONObject deserialized = new JSONObject(body);
+        // check if actorId is provided
+        // if (!body.containsKey("actorId")) {
+        //     r.sendResponseHeaders(400, -1);
+        //     return;
+        // }
+
+        try (Session session = driver.session())
+        {
+        	try (Transaction tx = session.beginTransaction()) {
+        		Result node_result = tx.run("MATCH (actor: Actor)-[r:ACTED_IN]->(movie) where actor.actorId = $actorId RETURN actor.name as name, actor.actorId as actorId,"
+                             + " r",
+                parameters("actorId", deserialized.getString("actorId")));
+
+                System.out.println("TEST!!!! " + node_result + "\n");
+                // If the actor is not found
+                if (node_result.hasNext() == false) {
+                 r.sendResponseHeaders(404, -1);
+                    return;
+                } 
+                else{
+                    List<Actor> actors = new ArrayList<Actor>();
+                    while (node_result.hasNext()) {
+                        Record rec = node_result.next();
+                        //Set up our response in a JSON format
+                        Actor actor = new Actor(rec.get("name").asString(), rec.get("actorId").asString());
+                        actors.add(actor);
+                    }
+                    // create the json response
+                    response = "[";
+                    for(Actor a : actors){
+                    // create the actor info and concat it to the response
+                    String actor_info = "{ \"name\" : " + a.name + ", \"actorId\" : " + a.actorId + " + "," },";
+                    response = response.concat(actor_info);
+                    }
+                    // replace the last comma and add the closing bracket
+                    response = response.replaceAll(",$", "");
+                    response = response.concat("]");
+                }
+                // send back appropriate responses
+                r.sendResponseHeaders(200, response.length());
+                OutputStream os = r.getResponseBody();
+                os.write(response.getBytes());
+                os.close();
+            } 
+            catch(Exception e){
+                e.printStackTrace();
+                r.sendResponseHeaders(400, response.length());
+            }
+        }
+        
+
+
+
+        
+    }
+
+
 
 
 }

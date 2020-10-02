@@ -13,14 +13,14 @@ public class App
         server.start();
         /* Actor APIs*/
         server.createContext("/api/v1/addActor", new ActorEndPoints());
-        // server.createContext("/api/v1/getActor", new ActorEndPoints());
+        server.createContext("/api/v1/getActor", new ActorEndPoints());
 
         // /* Movie APIs*/
-        // server.createContext("/api/v1/addMovie", new MovieEndPoints());
+        server.createContext("/api/v1/addMovie", new MovieEndPoints());
         // server.createContext("/api/v1/getMovie", new MovieEndPoints());
 
         // /* Relationship between Actor and Movies */
-        // server.createContext("/api/v1/addRelationship", new RelationEndPoints());
+        server.createContext("/api/v1/addRelationship", new RelationEndPoints());
         // server.createContext("/api/v1/hasRelationship", new RelationEndPoints());
 
         // /* Bacon APIc*/
