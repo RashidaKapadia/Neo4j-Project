@@ -24,8 +24,8 @@ public class App
         server.createContext("/api/v1/hasRelationship", new RelationEndPoints());
 
         // /* Bacon APIc*/
-        // server.createContext("/api/v1/computeBaconNumber", new BaconEndPoints());
-        // server.createContext("/api/v1/computeBaconPath", new BaconEndPoints());
+        server.createContext("/api/v1/computeBaconNumber", new BaconEndPoints());
+        server.createContext("/api/v1/computeBaconPath", new BaconEndPoints());
 
         System.out.printf("Server started on port %d...\n", PORT);
     }

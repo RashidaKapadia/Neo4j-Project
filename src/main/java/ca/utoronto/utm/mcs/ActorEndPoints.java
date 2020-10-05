@@ -28,8 +28,7 @@ public class ActorEndPoints implements HttpHandler {
 
     /* Establish driver of the db */
     public ActorEndPoints(){
-        uriDb = "bolt://localhost:7687";
-        driver = GraphDatabase.driver(uriDb, AuthTokens.basic("neo4j","jimmy"));
+        driver = Connect.getDriver();
     }
 
     @Override
@@ -85,10 +84,12 @@ public class ActorEndPoints implements HttpHandler {
         }
 
         int c = create(name, actorId);
-        if (c==0)
+        if (c==2)
             r.sendResponseHeaders(500, -1);
-        
-        r.sendResponseHeaders(200, 1);
+        else if (c==1)
+            r.sendResponseHeaders(400, -1);
+        else
+            r.sendResponseHeaders(200, 0);
         OutputStream os = r.getResponseBody();
         os.write("".getBytes());
         os.close();
@@ -99,15 +100,18 @@ public class ActorEndPoints implements HttpHandler {
         // check if actorId already exist
         // TO: Fix the Cypher command
         try (Session session = driver.session()){
-            session.writeTransaction(tx -> tx.run("MERGE (actor:Actor {actorId: $actorId})" 
-                + " ON MATCH SET actor.name = $name" 
-                + " ON CREATE SET actor.name = $name, actor.actorId=$actorId", 
+            session.writeTransaction(tx -> tx.run("MERGE (actor:Actor {id: $actorId, name: $name})" 
+                + " ON CREATE SET actor.name = $name, actor.id=$actorId", 
                 parameters("name", name, "actorId", actorId)));
             session.close();
-            return(1);
-        } catch (Exception e) {
-            e.printStackTrace();
             return(0);
+        } catch (org.neo4j.driver.exceptions.ClientException e) {
+            e.printStackTrace();
+            return(1);
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+            return(2);
         }
     }
     
@@ -119,11 +123,10 @@ public class ActorEndPoints implements HttpHandler {
         try (Session session = driver.session())
         {
         	try (Transaction tx = session.beginTransaction()) {
-        		Result node_result = tx.run("MATCH (actor: Actor) where actor.actorId = $actorId"
+        		Result node_result = tx.run("MATCH (actor: Actor) where actor.id = $actorId"
                  + " OPTIONAL MATCH (actor: Actor)-[r:ACTED_IN]->(movie: Movie)"
-                 + " RETURN actor.name as name, actor.actorId as actorId, movie.movieId as movieId",
+                 + " RETURN actor.name as name, actor.id as actorId, movie.id as movieId",
                 parameters("actorId", deserialized.getString("actorId")));
-                System.out.println("got node_result\n");
 
                 // If the actor is not found
                 if (node_result.hasNext() == false) {
@@ -138,13 +141,12 @@ public class ActorEndPoints implements HttpHandler {
                         //Set up our response in a JSON format
                         Actor actor = new Actor(rec.get("name").asString(), rec.get("actorId").asString());
                         Movie movie = new Movie(null, rec.get("movieId").asString());
-                        // System.out.println(rec.get("movieId").ArrayList);
                         actors.add(actor);
                         movies.add(movie);
                     }
                     Actor a = actors.get(0);
                     // create the json response
-                    response = "[";
+                    response = "";
                     String actor_info = "{ \"name\" : \""  + a.name + "\", \"actorId\" : \"" + a.actorId + "\", \"movies\" : ["; 
                     String movie_info = "";
                     for(Movie m : movies){
@@ -156,7 +158,7 @@ public class ActorEndPoints implements HttpHandler {
                     response = response.concat(actor_info);
                     // replace the last comma and add the closing bracket
                     response = response.replaceAll(",$", "");
-                    response = response.concat("]}]");
+                    response = response.concat("]}");
                 }
                 // send back appropriate responses
                 r.sendResponseHeaders(200, response.length());
@@ -172,10 +174,3 @@ public class ActorEndPoints implements HttpHandler {
         
     }
 }
-
-/*
-session.writeTransaction(tx -> tx.run("MERGE (actor:Actor {actorId: $actorId})" 
-+ "ON MATCH SET actor.name = $name" 
-+ "ON CREATE SET actor.name = $name, actor.actorId=$actorId", 
-        parameters("name", name, "actorId", actorId)));
-        */

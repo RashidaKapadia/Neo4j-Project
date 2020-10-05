@@ -25,8 +25,7 @@ public class MovieEndPoints implements HttpHandler {
 
     /* Establish driver of the db */
     public MovieEndPoints(){
-        uriDb = "bolt://localhost:7687";
-        driver = GraphDatabase.driver(uriDb, AuthTokens.basic("neo4j","jimmy"));
+        driver = Connect.getDriver();
     }
 
     @Override
@@ -82,10 +81,12 @@ public class MovieEndPoints implements HttpHandler {
         }
 
         int c = create(name, movieId);
-        if (c==0)
+        if (c==2)
             r.sendResponseHeaders(500, -1);
-        
-        r.sendResponseHeaders(200, 1);
+        else if (c==1)
+            r.sendResponseHeaders(400, -1);
+        else
+            r.sendResponseHeaders(200, 0);
         OutputStream os = r.getResponseBody();
         os.write("".getBytes());
         os.close();
@@ -96,15 +97,16 @@ public class MovieEndPoints implements HttpHandler {
         // check if movieId already exist
         // TO: Fix the Cypher command
         try (Session session = driver.session()){
-            session.writeTransaction(tx -> tx.run("MERGE (movie:Movie {movieId: $movieId})" 
-                + " ON MATCH SET movie.name = $name" 
-                + " ON CREATE SET movie.name = $name, movie.movieId=$movieId", 
+            session.writeTransaction(tx -> tx.run("MERGE (movie:Movie {id: $movieId, name: $name})" 
+                + " ON CREATE SET movie.name = $name, movie.id=$movieId", 
                 parameters("name", name, "movieId", movieId)));
             session.close();
-            return(1);
-        } catch (Exception e) {
-            e.printStackTrace();
             return(0);
+        } catch (org.neo4j.driver.exceptions.ClientException e) {
+            return(1);
+        }
+        catch (Exception e) {
+            return(2);
         }
     }
 
@@ -116,9 +118,9 @@ public class MovieEndPoints implements HttpHandler {
         try (Session session = driver.session())
         {
         	try (Transaction tx = session.beginTransaction()) {
-        		Result node_result = tx.run("MATCH (movie: Movie) where movie.movieId=$movieId"
+        		Result node_result = tx.run("MATCH (movie: Movie) where movie.id=$movieId"
                  + " OPTIONAL MATCH (actor: Actor)-[r:ACTED_IN]->(movie: Movie)"
-                 + " RETURN movie.name as name, movie.movieId as movieId, actor.actorId as actorId",
+                 + " RETURN movie.name as name, movie.id as movieId, actor.id as actorId",
                 parameters("movieId", deserialized.getString("movieId")));
 
                 // If the actor is not found
@@ -134,13 +136,12 @@ public class MovieEndPoints implements HttpHandler {
                         //Set up our response in a JSON format
                         Actor actor = new Actor(null, rec.get("actorId").asString());
                         Movie movie = new Movie(rec.get("name").asString(), rec.get("movieId").asString());
-                        // System.out.println(rec.get("movieId").ArrayList);
                         actors.add(actor);
                         movies.add(movie);
                     }
                     Movie m = movies.get(0);
                     // create the json response
-                    response = "[";
+                    response = "";
                     String movie_info = "{ \"movieId\" : \""  + m.movieId + "\", \"name\" : \"" + m.name + "\", \"actors\" : ["; 
                     String actor_info = "";
                     for(Actor a : actors){
@@ -152,7 +153,7 @@ public class MovieEndPoints implements HttpHandler {
                     response = response.concat(movie_info);
                     // replace the last comma and add the closing bracket
                     response = response.replaceAll(",$", "");
-                    response = response.concat("]}]");
+                    response = response.concat("]}");
                 }
                 // send back appropriate responses
                 r.sendResponseHeaders(200, response.length());
@@ -164,8 +165,6 @@ public class MovieEndPoints implements HttpHandler {
                 e.printStackTrace();
                 r.sendResponseHeaders(400, response.length());
             }
-        }
-        
+        }        
     }
-
 }

@@ -23,8 +23,7 @@ public class RelationEndPoints implements HttpHandler {
 
     /* Establish driver of the db */
     public RelationEndPoints(){
-        uriDb = "bolt://localhost:7687";
-        driver = GraphDatabase.driver(uriDb, AuthTokens.basic("neo4j","jimmy"));
+        driver = Connect.getDriver();
     }
 
     @Override
@@ -83,7 +82,7 @@ public class RelationEndPoints implements HttpHandler {
         if (c==0)
             r.sendResponseHeaders(500, -1);
         
-        r.sendResponseHeaders(200, 1);
+        r.sendResponseHeaders(200, 0);
         OutputStream os = r.getResponseBody();
         os.write("".getBytes());
         os.close();
@@ -94,8 +93,8 @@ public class RelationEndPoints implements HttpHandler {
         // check if movieId already exist
         // TO: Fix the Cypher command
         try (Session session = driver.session()){
-            session.writeTransaction(tx -> tx.run("MATCH (actor:Actor) where actor.actorId = $actorId"
-                            + " MATCH (movie:Movie) where movie.movieId = $movieId"
+            session.writeTransaction(tx -> tx.run("MATCH (actor:Actor) where actor.id = $actorId"
+                            + " MATCH (movie:Movie) where movie.id = $movieId"
                             + " MERGE (actor)-[r:ACTED_IN]-(movie) RETURN type(r) as type",
                     parameters("actorId", actorId, "movieId", movieId)));
             session.close();
@@ -116,8 +115,9 @@ public class RelationEndPoints implements HttpHandler {
             String actorId = deserialized.getString("actorId");
             String movieId = deserialized.getString("movieId");
         	try (Transaction tx = session.beginTransaction()) {
-        		Result node_result = tx.run("MATCH (actor: Actor)-[r:ACTED_IN]->(movie: Movie) where movie.movieId=$movieId AND actor.actorId=$actorId"
-                 + " RETURN movie.movieId as movieId, actor.actorId as actorId",
+        		Result node_result = tx.run("MATCH (actor:Actor) where actor.id = $actorId"
+                    + " MATCH (movie:Movie) where movie.id = $movieId"
+                    + " RETURN EXISTS((actor)-[:ACTED_IN]-(movie))",
                 parameters("actorId", actorId, "movieId", movieId));
 
                 // If the actor is not found
@@ -126,18 +126,16 @@ public class RelationEndPoints implements HttpHandler {
                     return;
                 } 
                 else{
-                    boolean hasRelationship = false;
                     Record rec = node_result.next();
-                    if (rec.get("movieId").asString() != "")
-                        hasRelationship = true;
+                    boolean hasRelationship = rec.get("EXISTS((actor)-[:ACTED_IN]-(movie))").asBoolean();
                     // create the json response
-                    response = "[";
+                    response = "";
                     String info = "{ \"actorId\" : \""  + actorId + "\", \"movieId\" : \"" + movieId + "\", \"hasRelationship\" : " + hasRelationship;
                     
                     response = response.concat(info);
                     // replace the last comma and add the closing bracket
                     response = response.replaceAll(",$", "");
-                    response = response.concat("]}]");
+                    response = response.concat("}");
                 }
                 // send back appropriate responses
                 r.sendResponseHeaders(200, response.length());
